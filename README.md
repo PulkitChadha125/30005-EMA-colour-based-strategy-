@@ -9,6 +9,8 @@ This project implements an automated options trading strategy using the Fyers AP
 - EMA calculation using `polars_talib`
 - Signal lifecycle: AwaitRed → RedLocked → Triggered
 - Order placement and basic trade management
+- **Trading hours enforcement** - trades only during specified StartTime/StopTime
+- **Automatic square-off** - closes all open trades at stop time
 
 ## Repository layout
 - `main.py` – strategy loop and signal logic
@@ -72,6 +74,12 @@ python main.py
 - Signal: Detects green close above EMA, then within 4 bars seeks a red bar whose close remains above EMA; locks entry=high+buffer and SL=low
 - Execution: Triggers when LTP ≥ entry; places buy; handles partial TP and stop loss
 
+## Trading Hours & Risk Management
+- **Trading Window**: Strategy only processes signals during `StartTime` to `StopTime` (from TradeSettings.csv)
+- **Automatic Square-off**: Any open trades are immediately closed when `StopTime` is reached
+- **Signal Reset**: All signal states are reset after square-off to prevent stale re-triggers
+- **Time Enforcement**: No new signals or trades are processed outside the specified trading hours
+
 ## Logs & outputs
 - `OrderLog.txt`: human-readable order events
 - Optional CSV dump: `fyersData_polars.csv` (last processed data with EMA)
@@ -83,6 +91,8 @@ If you use PyInstaller, see `pyinstallercommand.txt` for baseline commands. Ensu
 - If you see parsing errors like `strptime() argument 1 must be str, not float`, ensure CSV cells are proper strings (e.g., `09:25`, `16-09-2025`) without Excel-introduced decimals.
 - Make sure system time and timezone are correct; the code expects IST for some conversions.
 - Verify `client_id` ends with `-100` for API v3 app IDs.
+- **Trading Hours**: Ensure `StartTime` and `StopTime` in TradeSettings.csv are in HH:MM format (e.g., `09:25`, `15:30`)
+- **Square-off**: The strategy automatically closes all open positions at `StopTime` - no manual intervention needed
 
 ## Safety
 This strategy places real orders. Test thoroughly in a paper or sandbox environment before using on live funds. You are responsible for compliance and risk.

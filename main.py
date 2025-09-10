@@ -252,6 +252,7 @@ def get_user_settings():
                     # TP configuration: exit quantity/2 at target (min 1)
                     "TP1QTY": max(1, Quantity // 2),
                     "TP1Price": None,   # you use TargetPrice as trigger; this is optional actual fill log
+                    "SquareOffExecuted": False,
                 }
 
                 print("EntryBuffer: ", symbol_dict["EntryBuffer"])
@@ -434,10 +435,30 @@ def main_strategy():
         for unique_key, params in result_dict.items():
             # initialize loop-specific variables to avoid UnboundLocalError
             symbol_name = params["FyresSymbol"]
-           
-
-            # if not (params["StartTime"] <= now_time <= params["StopTime"]):
-            #     continue
+            
+            # FIRST: Check if we're past stop time and have an open trade - CLOSE IT IMMEDIATELY
+            if (now_time >= params.get("StopTime") and 
+                not params.get("SquareOffExecuted", False) and 
+                params.get("Trade") == "Entry" and
+                params.get("FyresLtp") is not None and
+                params.get("RemainingQty", 0) > 0):
+                
+                print(f"[{params['Symbol']}] Stop time reached. Executing square-off.")
+                params["SquareOffExecuted"] = True
+                params["Trade"] = None
+                params["CrossOverStatus"] = None
+                params["CrossOverTime"] = None
+                params["BarsLeft"] = 0
+                params["LastRedTime"] = None
+                params["EntryPrice"] = params["StoplossValue"] = params["CandleLength"] = params["TargetPrice"] = None
+                place_order(symbol=params["FyresSymbol"],quantity=params["RemainingQty"],type=1,side=-1,price=params["FyresLtp"])
+                write_to_order_logs(f"[{params['Symbol']}] Square-off executed. SELL {params['RemainingQty']} @ {params['FyresLtp']}")
+                continue  # Skip further processing after closing trade
+            
+            # SECOND: If outside trading hours, skip strategy processing
+            if not (params["StartTime"] <= now_time <= params["StopTime"]):
+                continue
+            
             fyersData=fetchOHLC(symbol_name,params["Timeframe"])
             # print("fyersData columns: ", fyersData.columns.tolist())
             # print("fyersData shape: ", fyersData.shape)
