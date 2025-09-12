@@ -192,6 +192,8 @@ def get_user_settings():
                         expiry_date = datetime.strptime(expiry_str, '%d-%m-%Y')
                         new_date_string = expiry_date.strftime('%y%b').upper()
                         fyers_symbol = f"NSE:{symbol}{new_date_string}{Strike}{OptionType}"
+                        if symbol == "SENSEX":
+                            fyers_symbol = f"BSE:{symbol}{new_date_string}{Strike}{OptionType}"
                         print(f"fyers_symbol: {fyers_symbol}")
                     elif ExpType == "Weekly":
                         # e.g., '16-09-2025' -> YYMDD (25 9 16) => NIFTY2591624750CE
@@ -202,6 +204,8 @@ def get_user_settings():
                         expiry_formatted = f"{year_yy}{month_m}{day_dd}"
                         print(f"Weekly expiry from CSV: {expiry_formatted}")
                         fyers_symbol = f"NSE:{symbol}{expiry_formatted}{Strike}{OptionType}"
+                        if symbol == "SENSEX":
+                            fyers_symbol = f"BSE:{symbol}{new_date_string}{Strike}{OptionType}"
                         print(f"fyers_symbol: {fyers_symbol}")
                 else:
                     print(f"[WARN] Row {index}: missing EXPIERY; skipping symbol construction.")
@@ -435,6 +439,7 @@ def main_strategy():
         for unique_key, params in result_dict.items():
             # initialize loop-specific variables to avoid UnboundLocalError
             symbol_name = params["FyresSymbol"]
+            TIMESTAMP = datetime.now()
             
             # FIRST: Check if we're past stop time and have an open trade - CLOSE IT IMMEDIATELY
             if (now_time >= params.get("StopTime") and 
@@ -443,7 +448,7 @@ def main_strategy():
                 params.get("FyresLtp") is not None and
                 params.get("RemainingQty", 0) > 0):
                 
-                print(f"[{params['Symbol']}] Stop time reached. Executing square-off.")
+                print(f"{TIMESTAMP} [{params['Symbol']}] Stop time reached. Executing square-off.")
                 params["SquareOffExecuted"] = True
                 params["Trade"] = None
                 params["CrossOverStatus"] = None
@@ -452,13 +457,13 @@ def main_strategy():
                 params["LastRedTime"] = None
                 params["EntryPrice"] = params["StoplossValue"] = params["CandleLength"] = params["TargetPrice"] = None
                 place_order(symbol=params["FyresSymbol"],quantity=params["RemainingQty"],type=1,side=-1,price=params["FyresLtp"])
-                write_to_order_logs(f"[{params['Symbol']}] Square-off executed. SELL {params['RemainingQty']} @ {params['FyresLtp']}")
+                write_to_order_logs(f"{TIMESTAMP} [{params['Symbol']}] Square-off executed. SELL {params['RemainingQty']} @ {params['FyresLtp']}")
                 continue  # Skip further processing after closing trade
             
             # SECOND: If outside trading hours, skip strategy processing
             if not (params["StartTime"] <= now_time <= params["StopTime"]):
                 continue
-            
+
             fyersData=fetchOHLC(symbol_name,params["Timeframe"])
             # print("fyersData columns: ", fyersData.columns.tolist())
             # print("fyersData shape: ", fyersData.shape)
@@ -474,7 +479,7 @@ def main_strategy():
                         timeperiod=int(params["EmaPeriod"])
                     ).alias("ema")
                 ])
-                print(f"EMA calculated successfully with period {params['EmaPeriod']}")
+                # print(f"EMA calculated successfully with period {params['EmaPeriod']}")
             except Exception as e:
                 print(f"Error calculating EMA: {e}")
                 # Fallback: add a column with NaN values
@@ -589,7 +594,9 @@ def main_strategy():
                                     params["EntryPrice"]    = SecondLastCandleHigh + entry_buf
                                     params["StoplossValue"] = SecondLastCandleLow
                                     params["CandleLength"]  = SecondLastCandleHigh - SecondLastCandleLow
-                                    params["TargetPrice"]   = SecondLastCandleClose + params["CandleLength"]
+                                    params["TargetPrice"]   = SecondLastCandleHigh + params["CandleLength"]
+                                    if params["TargetPrice"] < params["EntryPrice"]:
+                                        params["TargetPrice"] = params["EntryPrice"] + params["CandleLength"]
                                     params["CrossOverStatus"] = "RedLocked"
                                     params["LastRedTime"]   = SecondLastCandleTime
                                 else:
@@ -630,7 +637,9 @@ def main_strategy():
                         params["EntryPrice"]    = SecondLastCandleHigh + entry_buf
                         params["StoplossValue"] = SecondLastCandleLow
                         params["CandleLength"]  = SecondLastCandleHigh - SecondLastCandleLow
-                        params["TargetPrice"]   = SecondLastCandleClose + params["CandleLength"]
+                        params["TargetPrice"]   = SecondLastCandleHigh + params["CandleLength"]
+                        if params["TargetPrice"] < params["EntryPrice"]:
+                            params["TargetPrice"] = params["EntryPrice"] + params["CandleLength"]
                         params["LastRedTime"]   = SecondLastCandleTime
 
                     # case 2: any close below EMA -> reset
@@ -673,7 +682,7 @@ def main_strategy():
                 params["TP1QTY"] = params["TP1QTY"]
                 params["TP1Price"] = params["TP1Price"]
                 place_order(symbol=params["FyresSymbol"],quantity=params["Quantity"],type=1,side=1,price=params["FyresLtp"])
-                write_to_order_logs(f"[{symbol_name}] BUY {params['Quantity']} @ {params['FyresLtp']}")
+                write_to_order_logs(f"{TIMESTAMP} [{symbol_name}] BUY {params['Quantity']} @ {params['FyresLtp']}, candlelength: {params['CandleLength']}, target: {params['TargetPrice']}, stoploss: {params['StoplossValue']}")
 
             
             # --- PARTIAL TAKE PROFIT: exit half when target hits (only once) ---
@@ -686,7 +695,7 @@ def main_strategy():
                 params["RemainingQty"] = params["Quantity"] - params["TP1QTY"]
                 print(f"[TP1] {symbol_name}: SOLD {params['TP1QTY']} @ {params['FyresLtp']}. Remaining {params['RemainingQty']}")
                 place_order(symbol=params["FyresSymbol"],quantity=params["TP1QTY"],type=1,side=-1,price=params["FyresLtp"])
-                write_to_order_logs(f"[TP1] {symbol_name}: SELL {params['TP1QTY']} @ {params['FyresLtp']}")
+                write_to_order_logs(f"{TIMESTAMP} [TP1] {symbol_name}: SELL {params['TP1QTY']} @ {params['FyresLtp']}")
             
 
             # --- STOPLOSS: exit all remaining if price hits SL ---
@@ -703,7 +712,7 @@ def main_strategy():
                 print(f"[SL]  {symbol_name}: EXIT ALL {sell_qty} @ {params['FyresLtp']}")
                 place_order(symbol=params["FyresSymbol"],quantity=sell_qty,type=1,side=-1,price=params["FyresLtp"])
 
-                write_to_order_logs(f"[SL] {symbol_name}: EXIT ALL  {sell_qty} @ {params['FyresLtp']}")
+                write_to_order_logs(f"{TIMESTAMP} [SL] {symbol_name}: EXIT ALL  {sell_qty} @ {params['FyresLtp']}")
                 params["RemainingQty"] = 0
 
                 # full reset of signal levels (prevents stale re-triggers)
