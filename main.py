@@ -257,6 +257,8 @@ def get_user_settings():
                     "TP1QTY": max(1, Quantity // 2),
                     "TP1Price": None,   # you use TargetPrice as trigger; this is optional actual fill log
                     "SquareOffExecuted": False,
+                    "TslStep": 0,
+                    "TslMove": 0,
                 }
 
                 print("EntryBuffer: ", symbol_dict["EntryBuffer"])
@@ -691,12 +693,23 @@ def main_strategy():
                 and params["FyresLtp"] >= params["TargetPrice"] 
                 and not params["PartialBooked"]):
 
+                params["TslStep"] = 1
+                params["TslMove"] = params["FyresLtp"]+params["TslStep"]
                 params["PartialBooked"] = True
+                params["StoplossValue"] = params["EntryPrice"]
                 params["RemainingQty"] = params["Quantity"] - params["TP1QTY"]
                 print(f"[TP1] {symbol_name}: SOLD {params['TP1QTY']} @ {params['FyresLtp']}. Remaining {params['RemainingQty']}")
                 place_order(symbol=params["FyresSymbol"],quantity=params["TP1QTY"],type=1,side=-1,price=params["FyresLtp"])
-                write_to_order_logs(f"{TIMESTAMP} [TP1] {symbol_name}: SELL {params['TP1QTY']} @ {params['FyresLtp']}")
+                write_to_order_logs(f"{TIMESTAMP} [TP1] {symbol_name}: SELL {params['TP1QTY']} @ {params['FyresLtp']}, updated stoploss: {params['StoplossValue']}")
             
+
+
+            if (params["Trade"] == "Entry" and params['FyresLtp'] >=params["TslMove"]):
+                params["TslMove"]= params["TslMove"]+params["TslStep"]
+                params["StoplossValue"]= params["StoplossValue"]+params["TslStep"]
+                print(f"[TslMove] {symbol_name}: Updated stoploss: {params['StoplossValue']}")
+                write_to_order_logs(f"{TIMESTAMP} [TslMove] {symbol_name}: Updated stoploss: {params['StoplossValue']}")
+
 
             # --- STOPLOSS: exit all remaining if price hits SL ---
             if (params["Trade"] == "Entry" 
@@ -720,7 +733,7 @@ def main_strategy():
                 params["CrossOverTime"]   = None
                 params["BarsLeft"]        = 0
                 params["LastRedTime"]     = None
-                params["EntryPrice"] = params["StoplossValue"] = params["CandleLength"] = params["TargetPrice"] = None
+                params["EntryPrice"] = params["StoplossValue"] = params["CandleLength"] = params["TargetPrice"] = params["TslMove"] = None
 
                 
 
