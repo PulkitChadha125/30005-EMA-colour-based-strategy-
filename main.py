@@ -684,7 +684,7 @@ def main_strategy():
                 params["TP1QTY"] = params["TP1QTY"]
                 params["TP1Price"] = params["TP1Price"]
                 place_order(symbol=params["FyresSymbol"],quantity=params["Quantity"],type=1,side=1,price=params["FyresLtp"])
-                write_to_order_logs(f"{TIMESTAMP} [{symbol_name}] BUY {params['Quantity']} @ {params['FyresLtp']}, candlelength: {params['CandleLength']}, target: {params['TargetPrice']}, stoploss: {params['StoplossValue']}")
+                write_to_order_logs(f"{TIMESTAMP} [{symbol_name}] BUY {params['Quantity']} @ {params['EntryPrice']}, candlelength: {params['CandleLength']}, target: {params['TargetPrice']}, stoploss: {params['StoplossValue']}")
 
             
             # --- PARTIAL TAKE PROFIT: exit half when target hits (only once) ---
@@ -704,9 +704,10 @@ def main_strategy():
             
 
 
-            if (params["Trade"] == "Entry" and params['FyresLtp'] >=params["TslMove"]):
-                params["TslMove"]= params["TslMove"]+params["TslStep"]
-                params["StoplossValue"]= params["StoplossValue"]+params["TslStep"]
+            if (params["Trade"] == "Entry" and params['FyresLtp'] >=params["TslMove"] and params["TslMove"] > 0):
+                price_movement = params["FyresLtp"] - params["TslMove"]
+                params["TslMove"]= params["FyresLtp"]+params["TslStep"]
+                params["StoplossValue"]= params["StoplossValue"]+ params["TslStep"]
                 print(f"[TslMove] {symbol_name}: Updated stoploss: {params['StoplossValue']}")
                 write_to_order_logs(f"{TIMESTAMP} [TslMove] {symbol_name}: Updated stoploss: {params['StoplossValue']}")
 
